@@ -1,0 +1,60 @@
+print("Hello World!")
+
+# import lib.board_custom as board
+
+import ir_codes
+import pulseio
+
+
+import lib.board_custom as board
+from lib.modified_adafruit_macropad import MacroPad
+import time
+
+macropad = MacroPad()
+
+
+buttons = [
+    ir_codes.tv_hdmi_1,
+    ir_codes.tv_hdmi_2,
+    ir_codes.tv_hdmi_3,
+    ir_codes.tv_power_on_off,
+    ir_codes.soundbar_power_on_off,
+    ir_codes.soundbar_toggle_mute,
+    ir_codes.soundbar_vol_up,
+    ir_codes.soundbar_vol_down,
+]
+
+button_names = [
+    'tv_hdmi_1',
+    'tv_hdmi_2',
+    'tv_hdmi_3',
+    'tv_power_on_off',
+    'soundbar_power_on_off',
+    'soundbar_toggle_mute',
+    'soundbar_vol_up',
+    'soundbar_vol_down',
+]
+
+
+remote = pulseio.PulseOut(board.GP0, frequency=38000, duty_cycle=2**15)
+
+last_encoder_pos = 0
+while True:
+    key_event = macropad.keys.events.get()
+    if key_event:
+        if key_event.pressed:
+            print("Key pressed: {}".format(key_event.key_number))
+            kn = key_event.key_number
+            if kn < len(buttons):
+                print(button_names[kn])
+                remote.send(buttons[kn])
+                pass
+        elif key_event.released:
+            print("Key released: {}".format(key_event.key_number))
+    if macropad.encoder and macropad.encoder != last_encoder_pos:
+        print("Encoder: {}".format(macropad.encoder))
+        last_encoder_pos = macropad.encoder
+    # print("Encoder switch: {}".format(macropad.encoder_switch))
+    # time.sleep(0.4)
+
+
