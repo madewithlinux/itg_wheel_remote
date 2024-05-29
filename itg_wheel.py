@@ -33,6 +33,34 @@ KC_TRANSPARENT = KC_TRNS = _______ = (0x0001,)
 KC_NO = XXXXXXX = (0x0000,)
 
 
+def create_bitmap_group(file_path: str):
+    # https://learn.adafruit.com/circuitpython-display-support-using-displayio/display-a-bitmap
+    # Setup the file as the bitmap data source
+    bitmap = displayio.OnDiskBitmap(file_path)
+
+    # Create a TileGrid to hold the bitmap
+    tile_grid = displayio.TileGrid(bitmap, pixel_shader=bitmap.pixel_shader)
+
+    # Create a Group to hold the TileGrid
+    group = displayio.Group()
+
+    # Add the TileGrid to the Group
+    group.append(tile_grid)
+    return group
+
+
+layer_image_paths = [
+    "img/p1_menu_buttons.bmp",
+    "img/p2_menu_buttons.bmp",
+    "img/p1_game_buttons.bmp",
+    "img/p2_game_buttons.bmp",
+    "img/Fn.bmp",
+]
+layer_bitmap_groups = [
+    create_bitmap_group(p) for p in layer_image_paths
+]
+
+
 class ItgWheelKeyboard:
     def __init__(
         self,
@@ -120,7 +148,10 @@ class ItgWheelKeyboard:
     def main_loop(self):
         event = keypad.Event()
         last_position = self.encoder_position
+        self.on_layer_changed()
         while True:
+            initial_layer_index = self.layer_index
+
             position = self.encoder_position
             if last_position != position:
                 delta = position - last_position
@@ -141,6 +172,13 @@ class ItgWheelKeyboard:
                 else:
                     print("error: unhandled keycode", keycode, type(keycode))
                 print(f"{self.layer_index=} {self.layer_index_stack}")
+
+            if self.layer_index != initial_layer_index:
+                self.on_layer_changed()
+
+    def on_layer_changed(self):
+        if self.layer_index < len(layer_bitmap_groups):
+            self.display.root_group = layer_bitmap_groups[self.layer_index]
 
     def get_keycode(self, key_number: int, layers: list = None):
         if layers is None:
