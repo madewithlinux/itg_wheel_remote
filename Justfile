@@ -7,7 +7,9 @@ circup *ARGS:
 sync:
 	cp -u ${TARGET_DEVICE}/boot_out.txt ./boot_out.txt
 	cp -u -t ${TARGET_DEVICE}/ *.py
-	# cp -urt ${TARGET_DEVICE}/ lib/
+	cp -urt ${TARGET_DEVICE}/ lib/
+sync-loop:
+	while true; do just sync; sleep 1s; done
 
 console:
 	picocom ${SERIAL_TTY}
