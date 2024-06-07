@@ -1,10 +1,44 @@
+import game_button_mapping
+from game_button_mapping import (
+    ITG_KEYCODE_P1_MENU_LEFT,
+    ITG_KEYCODE_P1_MENU_RIGHT,
+    ITG_KEYCODE_P1_LEFT,
+    ITG_KEYCODE_P1_RIGHT,
+    ITG_KEYCODE_P1_UP,
+    ITG_KEYCODE_P1_DOWN,
+    ITG_KEYCODE_P2_MENU_LEFT,
+    ITG_KEYCODE_P2_MENU_RIGHT,
+    ITG_KEYCODE_P2_LEFT,
+    ITG_KEYCODE_P2_RIGHT,
+    ITG_KEYCODE_P2_UP,
+    ITG_KEYCODE_P2_DOWN,
+    KC_TRANSPARENT,
+    KC_TRNS,
+    _______,
+    KC_NO,
+    XXXXXXX,
+    ItgButton,
+    ItgPlayer,
+    get_itg_keycode_for_button,
+    LEFT,
+    RIGHT,
+    UP,
+    DOWN,
+    START,
+    SELECT,
+    BACK,
+    OPERATOR,
+)
+import keypad_layout
+from keypad_layout import layout
+
 import board
 import keypad
 import rotaryio
 import digitalio
 from time import sleep
 
-from adafruit_debouncer import Debouncer
+# from adafruit_debouncer import Debouncer
 import usb_hid, usb_cdc
 import adafruit_hid
 from adafruit_hid.keyboard import Keyboard
@@ -54,19 +88,10 @@ if BLE_ENABLED:
     # kl = KeyboardLayoutUS(k)
 
     while not ble.connected:
-        board_led .value = True
+        board_led.value = True
         sleep(0.1)
-        board_led .value = False
+        board_led.value = False
         sleep(0.1)
-
-
-ROTA = board.P1_06
-ROTB = board.P1_04
-BUTTON = board.P0_11
-
-
-KC_TRANSPARENT = KC_TRNS = _______ = (0x0001,)
-KC_NO = XXXXXXX = (0x0000,)
 
 
 class ItgWheelKeyboard:
@@ -89,10 +114,15 @@ class ItgWheelKeyboard:
                 board.P0_09,
             ),
         )
-        self._encoder = rotaryio.IncrementalEncoder(ROTA, ROTB)
-        self._encoder_switch = digitalio.DigitalInOut(BUTTON)
-        self._encoder_switch.switch_to_input(pull=digitalio.Pull.UP)
-        self._debounced_switch = Debouncer(self._encoder_switch)
+        self.encoder = rotaryio.IncrementalEncoder(board.P1_06, board.P1_04)
+        self.encoder_key = keypad.Keys(
+            (board.P1_00,), value_when_pressed=False, pull=True
+        )
+
+        self.player_switch = digitalio.DigitalInOut(board.P0_11)
+        """NOTE: for player_switch.value, P1 is True, P2 is False"""
+
+        self.player_switch.switch_to_input(pull=digitalio.Pull.UP)
 
         # Define HID:
         self._keyboard = None
@@ -105,7 +135,6 @@ class ItgWheelKeyboard:
         self.layers = []
         self.layer_index = 0
         self.layer_index_stack = []
-        self.encoder_layers = []
 
     @property
     def keyboard(self) -> Keyboard:
@@ -117,73 +146,43 @@ class ItgWheelKeyboard:
         return self._keyboard
 
     @property
-    def keyboard_layout(self) -> KeyboardLayoutBase:
-        if self._keyboard_layout is None:
-            # This will need to be updated if we add more layouts. Currently there is only US.
-            self._keyboard_layout = self._layout_class(self.keyboard)
-        return self._keyboard_layout
-
-    @property
     def consumer_control(self) -> ConsumerControl:
         if self._consumer_control is None:
             self._consumer_control = ConsumerControl(usb_hid.devices)
         return self._consumer_control
 
-    @property
-    def encoder_position(self) -> int:
-        return self._encoder.position
-
-    def handle_encoder(self, delta: int):
-        if delta > 0:
-            key_number = 1
-        else:
-            key_number = 0
-        keycode = self.get_keycode(key_number, layers=self.encoder_layers)
-        if keycode is None or keycode is KC_NO:
-            return
-        elif isinstance(keycode, int):
-            for i in range(abs(delta)):
-                self.keyboard.send(keycode)
-        elif callable(keycode):
-            keycode(delta)
-        else:
-            print("error: unhandled keycode", keycode, type(keycode))
-
     def main_loop(self):
         event = keypad.Event()
-        last_position = self.encoder_position
-        self.on_layer_changed()
+        last_position = self.encoder.position
         while True:
-            initial_layer_index = self.layer_index
 
-            position = self.encoder_position
+            position = self.encoder.position
             if last_position != position:
                 delta = position - last_position
-                self.handle_encoder(delta)
-            last_position = position
-            if self.keys.events.get_into(event):
-                print("key event", event)
-                # keycode = self.layers[self.layer_index][event.key_number]
-                keycode = self.get_keycode(event.key_number)
-                if keycode is None or keycode is KC_NO:
-                    continue
-                elif isinstance(keycode, int):
-                    if event.pressed:
-                        self.keyboard.press(keycode)
-                    elif event.released:
-                        self.keyboard.release(keycode)
-                elif callable(keycode):
-                    keycode(event)
+                if delta > 0:
+                    key_number = keypad_layout.INDEX_ENCODER_CW
                 else:
-                    print("error: unhandled keycode", keycode, type(keycode))
-                print(f"{self.layer_index=} {self.layer_index_stack}")
+                    key_number = keypad_layout.INDEX_ENCODER_CCW
+                keycode = self.get_keycode(key_number)
+                # TODO: should we preserve missed steps?
+                # for i in range(abs(delta)):
+                #     self.handle_keycode(keycode, True)
+                #     self.handle_keycode(keycode, False)
+                self.handle_keycode(keycode, True)
+                self.handle_keycode(keycode, False)
+                last_position = position
 
-            if self.layer_index != initial_layer_index:
-                self.on_layer_changed()
+            if self.keys.events.get_into(event):
+                # print("key event", event)
+                keycode = self.get_keycode(event.key_number)
+                self.handle_keycode(keycode, event.pressed)
+                # print("layer state", self.layer_index, self.layer_index_stack)
+
+            if self.encoder_key.events.get_into(event):
+                keycode = self.get_keycode(keypad_layout.INDEX_ENCODER_MIDDLE)
+                self.handle_keycode(keycode, event.pressed)
+
             sleep(0.02)
-
-    def on_layer_changed(self):
-        pass
 
     def get_keycode(self, key_number: int, layers: list = None):
         if layers is None:
@@ -197,15 +196,30 @@ class ItgWheelKeyboard:
                 return keycode
         return None
 
+    def handle_keycode(self, keycode: Union[int, ItgButton, callable], pressed: bool):
+        if keycode is None or keycode is KC_NO:
+            return
+        if isinstance(keycode, ItgButton):
+            keycode = get_itg_keycode_for_button(keycode, self.player_switch.value)
+        if isinstance(keycode, int):
+            if pressed:
+                self.keyboard.press(keycode)
+            else:
+                self.keyboard.release(keycode)
+        elif callable(keycode):
+            keycode(pressed)
+        else:
+            print("error: unhandled keycode", keycode, type(keycode))
+
     def MO(self, layer_index: int):
         """activates layer as long as button is held"""
 
         # def fun(event: keypad.Event, *args, **kwargs):
-        def fun(event: keypad.Event):
-            if event.pressed:
+        def fun(pressed: bool):
+            if pressed:
                 self.layer_index_stack.append(self.layer_index)
                 self.layer_index = layer_index
-            elif event.released:
+            else:
                 self.layer_index = self.layer_index_stack.pop()
 
         return fun
@@ -213,90 +227,69 @@ class ItgWheelKeyboard:
     def DF(self, layer_index: int):
         """immediately replaces current layer with target layer"""
 
-        def fun(event: keypad.Event):
-            if event.pressed:
+        def fun(pressed: bool):
+            if pressed:
                 self.layer_index = layer_index
 
         return fun
 
-    def SEND(self, *keycodes: int):
-        """immediately replaces current layer with target layer"""
+    def ALL(self, *keycodes: int):
 
-        def func(event: keypad.Event):
-            if event.pressed:
+        def fun(pressed: bool):
+            if pressed:
                 self.keyboard.press(*keycodes)
-            elif event.released:
+            else:
                 self.keyboard.release(*keycodes)
 
-        return func
+        return fun
 
-    def BOOTLOADER(self, event: keypad.Event):
-        if event.pressed:
+    def BOOTLOADER(self, pressed: bool):
+        if pressed:
             print("rebooting to bootloader")
             import microcontroller
 
             microcontroller.on_next_reset(microcontroller.RunMode.UF2)
             microcontroller.reset()
 
+    def OPEN_MENU(self, pressed: bool):
+        if self.player_switch.value:
+            keycodes = (
+                ITG_KEYCODE_P1_MENU_LEFT,
+                ITG_KEYCODE_P1_LEFT,
+                ITG_KEYCODE_P1_MENU_RIGHT,
+                ITG_KEYCODE_P1_RIGHT,
+            )
+        else:
+            keycodes = (
+                ITG_KEYCODE_P2_MENU_LEFT,
+                ITG_KEYCODE_P2_LEFT,
+                ITG_KEYCODE_P2_MENU_RIGHT,
+                ITG_KEYCODE_P2_RIGHT,
+            )
+        if pressed:
+            self.keyboard.press(*keycodes)
+        else:
+            self.keyboard.release(*keycodes)
 
-def layout(
-    # fmt: off
-          up,
-    left, middle, right,
-          down,
-    F00, F01,
-    F10, F11,
-    F20, F21,
-    F30, F31,
-    # fmt: on
-) -> tuple:
-    return (
-        # fmt: off
-        up,    F00, F01,
-        right, F10, F11,
-        down,  F20, F21,
-        left,  F30, F31,
-        # fmt: on
-        middle,
-    )
+    def CLOSE_FOLDER(self, pressed: bool):
+        if self.player_switch.value:
+            keycodes = (
+                ITG_KEYCODE_P1_UP,
+                ITG_KEYCODE_P1_DOWN,
+            )
+        else:
+            keycodes = (
+                ITG_KEYCODE_P2_UP,
+                ITG_KEYCODE_P2_DOWN,
+            )
+        if pressed:
+            self.keyboard.press(*keycodes)
+        else:
+            self.keyboard.release(*keycodes)
 
 
 kb = ItgWheelKeyboard()
 
-# my mappings. note: these are intentionally swapped for P1!
-# fmt: off
-P1_MENU_LEFT   = Keycode.LEFT_ARROW
-P1_MENU_RIGHT  = Keycode.RIGHT_ARROW
-P1_MENU_UP     = Keycode.UP_ARROW
-P1_MENU_DOWN   = Keycode.DOWN_ARROW
-P1_LEFT        = Keycode.DELETE
-P1_RIGHT       = Keycode.PAGE_DOWN
-P1_UP          = Keycode.HOME
-P1_DOWN        = Keycode.END
-P1_START       = Keycode.ENTER
-P1_SELECT      = Keycode.FORWARD_SLASH
-P1_BACK        = Keycode.ESCAPE
-#
-P2_MENU_LEFT   = Keycode.KEYPAD_FORWARD_SLASH
-P2_MENU_RIGHT  = Keycode.KEYPAD_ASTERISK
-P2_MENU_UP     = Keycode.KEYPAD_MINUS
-P2_MENU_DOWN   = Keycode.KEYPAD_PLUS
-P2_LEFT        = Keycode.KEYPAD_FOUR
-P2_RIGHT       = Keycode.KEYPAD_SIX
-P2_UP          = Keycode.KEYPAD_EIGHT
-P2_DOWN        = Keycode.KEYPAD_TWO
-P2_START       = Keycode.KEYPAD_ENTER
-P2_SELECT      = Keycode.KEYPAD_ZERO
-P2_BACK        = Keycode.BACKSLASH
-#
-COIN           = Keycode.F1
-OPERATOR       = Keycode.SCROLL_LOCK
-# fmt: on
-
-P1_OPEN_MENU = kb.SEND(P1_MENU_LEFT, P1_MENU_RIGHT)
-P1_CLOSE = kb.SEND(P1_UP, P1_DOWN)
-P2_OPEN_MENU = kb.SEND(P2_MENU_LEFT, P2_MENU_RIGHT)
-P2_CLOSE = kb.SEND(P2_UP, P2_DOWN)
 
 # TODO
 IR_SOUNDBAR_TOGGLE_MUTE = KC_NO
@@ -306,82 +299,42 @@ IR_SOUNDBAR_VOL_DOWN = KC_NO
 IR_SOUNDBAR_POWER_ON_OFF = KC_NO
 IR_TV_HDMI3 = KC_NO
 QK_BOOT = kb.BOOTLOADER
-ALT_F4 = kb.SEND(Keycode.ALT, Keycode.F4)
+ALT_F4 = kb.ALL(Keycode.ALT, Keycode.F4)
 
 
-LAYER_P1 = 0
-LAYER_P2 = 1
-LAYER_P1_GAME = 2
-LAYER_P2_GAME = 3
-LAYER_FN = 4
-LAYER_TEST = 5
+LAYER_PLAYER = 0
+LAYER_FN = 1
+LAYER_TEST = 2
 
-kb.encoder_layers = (
-    # LAYER_P1
-    (P1_MENU_LEFT, P1_MENU_RIGHT),
-    # LAYER_P2
-    (P2_MENU_LEFT, P2_MENU_RIGHT),
-    # LAYER_P1_GAME
-    (P1_LEFT, P1_RIGHT),
-    # LAYER_P2_GAME
-    (P2_LEFT, P2_RIGHT),
-    # LAYER_FN
-    (IR_SOUNDBAR_VOL_DOWN, IR_SOUNDBAR_VOL_UP),
-    # LAYER_TEST
-    (P1_MENU_LEFT, P1_MENU_RIGHT),
-)
-
-# fmt: off
-empty_layer = (KC_TRANSPARENT)*13
-# empty_layer = (KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT)
-# fmt: on
+empty_layer = (KC_TRANSPARENT) * keypad_layout.LAYOUT_SIZE
 kb.layers = (
     # fmt: off
-    # LAYER_P1
+    # LAYER_PLAYER
     layout(
-                      P1_MENU_UP   ,
-        P1_MENU_LEFT, P1_START     , P1_MENU_RIGHT,
-                      P1_MENU_DOWN ,
-        P1_CLOSE       , P1_OPEN_MENU,
-        P1_SELECT      , kb.DF(LAYER_P2),
-        P1_BACK        , kb.MO(LAYER_P1_GAME),
-        kb.MO(LAYER_FN), XXXXXXX
-    ),
-    # LAYER_P2
-    layout(
-                      P2_MENU_UP   ,
-        P2_MENU_LEFT, P2_START     , P2_MENU_RIGHT,
-                      P2_MENU_DOWN ,
-        P2_CLOSE       , P2_OPEN_MENU,
-        P2_SELECT      , kb.DF(LAYER_P1),
-        P2_BACK        , kb.MO(LAYER_P2_GAME),
-        kb.MO(LAYER_FN), XXXXXXX
-    ),
-    # LAYER_P1_GAME
-    layout(
-        *empty_layer
-        # P1_SELECT   , P1_UP       , P1_START,
-        # P1_LEFT     , P1_DOWN     , P1_RIGHT,
-        # P1_OPEN_MENU, P1_CLOSE    , XXXXXXX,
-        # P1_BACK     , _______     , XXXXXXX
-    ),
-    # LAYER_P2_GAME
-    layout(
-        *empty_layer
-        # P2_SELECT   , P2_UP       , P2_START,
-        # P2_LEFT     , P2_DOWN     , P2_RIGHT,
-        # P2_OPEN_MENU, P2_CLOSE    , XXXXXXX,
-        # P2_BACK     , _______     , XXXXXXX
+        LEFT, RIGHT,
+              UP    ,
+        LEFT, START , RIGHT,
+              DOWN  ,
+        kb.CLOSE_FOLDER , kb.OPEN_MENU,
+        SELECT          , _______,
+        BACK            , _______,
+        kb.MO(LAYER_FN) , XXXXXXX
     ),
     # LAYER_FN
     layout(
-        IR_SOUNDBAR_TOGGLE_MUTE , IR_SOUNDBAR_VOL_UP   , IR_TV_POWER_ON_OFF,
-        _______                 , IR_SOUNDBAR_VOL_DOWN , IR_SOUNDBAR_POWER_ON_OFF,
-        QK_BOOT                 , OPERATOR             , IR_TV_HDMI3,
-        ALT_F4                  , _______              , _______,_______
+        IR_SOUNDBAR_VOL_DOWN, IR_SOUNDBAR_VOL_UP,
+                 _______,
+        _______, IR_SOUNDBAR_TOGGLE_MUTE, _______,
+                 _______,
+
+        QK_BOOT, IR_SOUNDBAR_POWER_ON_OFF,
+        _______, OPERATOR,
+        _______, _______ ,
+        _______, ALT_F4  ,
     ),
     # LAYER_TEST
     layout(
+        Keycode.L, Keycode.R,
         Keycode.ONE,   Keycode.TWO,   Keycode.THREE,
         Keycode.FOUR,  Keycode.FIVE,  Keycode.SIX,
         Keycode.SEVEN, Keycode.EIGHT, Keycode.NINE,
