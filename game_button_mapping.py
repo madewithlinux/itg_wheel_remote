@@ -45,9 +45,9 @@ ITG_KEYCODE_OPERATOR       = Keycode.SCROLL_LOCK
 # fmt: on
 
 
-class ItgPlayer:
-    def __init__(self, value: int) -> None:
-        self.value = value
+# class ItgPlayer:
+#     def __init__(self, value: int) -> None:
+#         self.value = value
 
 
 class ItgButton:
@@ -56,8 +56,8 @@ class ItgButton:
 
 
 # fmt: off
-PLAYER_1 = ItgPlayer(0)
-PLAYER_2 = ItgPlayer(1)
+# PLAYER_1 = ItgPlayer(0)
+# PLAYER_2 = ItgPlayer(1)
 
 LEFT     = ItgButton(0)
 RIGHT    = ItgButton(1)

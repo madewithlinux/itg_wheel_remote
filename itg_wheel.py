@@ -1,4 +1,4 @@
-import game_button_mapping
+import hid_provider
 from game_button_mapping import (
     ITG_KEYCODE_P1_MENU_LEFT,
     ITG_KEYCODE_P1_MENU_RIGHT,
@@ -18,7 +18,6 @@ from game_button_mapping import (
     KC_NO,
     XXXXXXX,
     ItgButton,
-    ItgPlayer,
     get_itg_keycode_for_button,
     LEFT,
     RIGHT,
@@ -32,74 +31,18 @@ from game_button_mapping import (
 import keypad_layout
 from keypad_layout import layout
 
-import board
-import keypad
-import rotaryio
-import digitalio
-from time import sleep
+import time
+import board, keypad, rotaryio, digitalio, analogio
 
-# from adafruit_debouncer import Debouncer
-import usb_hid, usb_cdc
-import adafruit_hid
-from adafruit_hid.keyboard import Keyboard
-from adafruit_hid.keyboard_layout_base import KeyboardLayoutBase
-from adafruit_hid.keyboard_layout_us import KeyboardLayoutUS
 from adafruit_hid.keycode import Keycode
-from adafruit_hid.consumer_control import ConsumerControl
-from adafruit_hid.consumer_control_code import ConsumerControlCode
-
-board_led = digitalio.DigitalInOut(board.LED)
-board_led.direction = digitalio.Direction.OUTPUT
-
-device_name = "ITG wheel remote v2.0"
-
-# BLE_ENABLED = True
-BLE_ENABLED = False
-if BLE_ENABLED:
-    import adafruit_ble
-    from adafruit_ble.advertising import Advertisement
-    from adafruit_ble.advertising.standard import ProvideServicesAdvertisement
-    from adafruit_ble.services.standard.hid import HIDService
-    from adafruit_ble.services.standard.device_info import DeviceInfoService
-
-    hid = HIDService()
-    device_info = DeviceInfoService(
-        software_revision=adafruit_ble.__version__,
-        manufacturer="Adafruit Industries",
-        model_number=device_name,
-    )
-    advertisement = ProvideServicesAdvertisement(hid, device_info)
-    # Advertise as "Keyboard" (0x03C1) icon when pairing
-    # https://www.bluetooth.com/specifications/assigned-numbers/
-    advertisement.appearance = 961
-    scan_response = Advertisement()
-    scan_response.complete_name = device_name
-    ble = adafruit_ble.BLERadio()
-    ble.name = device_name
-
-    if not ble.connected:
-        print("advertising")
-        ble.start_advertising(advertisement, scan_response)
-    else:
-        print("already connected")
-        print(ble.connections)
-
-    ble_keyboard = Keyboard(hid.devices)
-    # kl = KeyboardLayoutUS(k)
-
-    while not ble.connected:
-        board_led.value = True
-        sleep(0.1)
-        board_led.value = False
-        sleep(0.1)
+from adafruit_hid.keyboard import Keyboard
+from adafruit_hid.keyboard_layout_us import KeyboardLayoutUS
 
 
 class ItgWheelKeyboard:
-    def __init__(
-        self,
-        layout_class: type[KeyboardLayoutBase] = KeyboardLayoutUS,
-        keycode_class: type[Keycode] = Keycode,
-    ) -> None:
+    def __init__(self, keyboard: Keyboard) -> None:
+        self.keyboard = keyboard
+        self.keyboard_layout = KeyboardLayoutUS(keyboard)
 
         self.keys = keypad.KeyMatrix(
             row_pins=(
@@ -123,33 +66,15 @@ class ItgWheelKeyboard:
         """NOTE: for player_switch.value, P1 is True, P2 is False"""
 
         self.player_switch.switch_to_input(pull=digitalio.Pull.UP)
+        self.bat_volt = analogio.AnalogIn(board.BAT_VOLT)
 
         # Define HID:
         self._keyboard = None
-        self._keyboard_layout = None
         self._consumer_control = None
-        # self._mouse = None
-        self._layout_class = layout_class
-        self.Keycode = keycode_class
 
         self.layers = []
         self.layer_index = 0
         self.layer_index_stack = []
-
-    @property
-    def keyboard(self) -> Keyboard:
-        if self._keyboard is None:
-            if BLE_ENABLED:
-                self._keyboard = ble_keyboard
-            else:
-                self._keyboard = Keyboard(usb_hid.devices)
-        return self._keyboard
-
-    @property
-    def consumer_control(self) -> ConsumerControl:
-        if self._consumer_control is None:
-            self._consumer_control = ConsumerControl(usb_hid.devices)
-        return self._consumer_control
 
     def main_loop(self):
         event = keypad.Event()
@@ -182,7 +107,7 @@ class ItgWheelKeyboard:
                 keycode = self.get_keycode(keypad_layout.INDEX_ENCODER_MIDDLE)
                 self.handle_keycode(keycode, event.pressed)
 
-            sleep(0.02)
+            time.sleep(0.02)
 
     def get_keycode(self, key_number: int, layers: list = None):
         if layers is None:
@@ -287,8 +212,15 @@ class ItgWheelKeyboard:
         else:
             self.keyboard.release(*keycodes)
 
+    def BATT(self, pressed: bool):
+        if pressed:
+            val = self.bat_volt.value
+            ref = self.bat_volt.reference_voltage
+            volt = (val * ref) / 65535
+            self.keyboard_layout.write(f"{val=}\n{ref=}\n{volt=}\n")
 
-kb = ItgWheelKeyboard()
+
+kb = ItgWheelKeyboard(hid_provider.get_hid_keyboard())
 
 
 # TODO
@@ -306,7 +238,7 @@ LAYER_PLAYER = 0
 LAYER_FN = 1
 LAYER_TEST = 2
 
-empty_layer = (KC_TRANSPARENT) * keypad_layout.LAYOUT_SIZE
+# empty_layer = (KC_TRANSPARENT) * keypad_layout.LAYOUT_SIZE
 kb.layers = (
     # fmt: off
     # LAYER_PLAYER
@@ -328,7 +260,7 @@ kb.layers = (
                  _______,
 
         QK_BOOT, IR_SOUNDBAR_POWER_ON_OFF,
-        _______, OPERATOR,
+        kb.BATT, OPERATOR,
         _______, _______ ,
         _______, ALT_F4  ,
     ),
@@ -346,10 +278,4 @@ kb.layers = (
 
 
 def main():
-    import analogio
-
-    bat_volt = analogio.AnalogIn(board.BAT_VOLT)
-    print("battery value", bat_volt.value)
-    print("ref", bat_volt.reference_voltage)
-    print("battery:", (bat_volt.value * bat_volt.reference_voltage) / 65535)
     kb.main_loop()
