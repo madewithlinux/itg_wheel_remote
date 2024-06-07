@@ -1,12 +1,9 @@
-import busio
 import board
-import digitalio
-import displayio
-import i2cdisplaybus
 import keypad
 import rotaryio
+import digitalio
+from time import sleep
 
-import adafruit_displayio_ssd1306
 from adafruit_debouncer import Debouncer
 import usb_hid, usb_cdc
 import adafruit_hid
@@ -17,48 +14,59 @@ from adafruit_hid.keycode import Keycode
 from adafruit_hid.consumer_control import ConsumerControl
 from adafruit_hid.consumer_control_code import ConsumerControlCode
 
+board_led = digitalio.DigitalInOut(board.LED)
+board_led.direction = digitalio.Direction.OUTPUT
 
-displayio.release_displays()
+device_name = "ITG wheel remote v2.0"
 
-ROTA = board.GP18
-ROTB = board.GP19
-BUTTON = board.GP20
+# BLE_ENABLED = True
+BLE_ENABLED = False
+if BLE_ENABLED:
+    import adafruit_ble
+    from adafruit_ble.advertising import Advertisement
+    from adafruit_ble.advertising.standard import ProvideServicesAdvertisement
+    from adafruit_ble.services.standard.hid import HIDService
+    from adafruit_ble.services.standard.device_info import DeviceInfoService
 
-# See https://cdn-shop.adafruit.com/product-files/5228/5223-ds.pdf#page=13
-_DISPLAY_SLEEP_COMMAND = 0xAE
-_DISPLAY_WAKE_COMMAND = 0xAF
+    hid = HIDService()
+    device_info = DeviceInfoService(
+        software_revision=adafruit_ble.__version__,
+        manufacturer="Adafruit Industries",
+        model_number=device_name,
+    )
+    advertisement = ProvideServicesAdvertisement(hid, device_info)
+    # Advertise as "Keyboard" (0x03C1) icon when pairing
+    # https://www.bluetooth.com/specifications/assigned-numbers/
+    advertisement.appearance = 961
+    scan_response = Advertisement()
+    scan_response.complete_name = device_name
+    ble = adafruit_ble.BLERadio()
+    ble.name = device_name
+
+    if not ble.connected:
+        print("advertising")
+        ble.start_advertising(advertisement, scan_response)
+    else:
+        print("already connected")
+        print(ble.connections)
+
+    ble_keyboard = Keyboard(hid.devices)
+    # kl = KeyboardLayoutUS(k)
+
+    while not ble.connected:
+        board_led .value = True
+        sleep(0.1)
+        board_led .value = False
+        sleep(0.1)
+
+
+ROTA = board.P1_06
+ROTB = board.P1_04
+BUTTON = board.P0_11
 
 
 KC_TRANSPARENT = KC_TRNS = _______ = (0x0001,)
 KC_NO = XXXXXXX = (0x0000,)
-
-
-def create_bitmap_group(file_path: str):
-    # https://learn.adafruit.com/circuitpython-display-support-using-displayio/display-a-bitmap
-    # Setup the file as the bitmap data source
-    bitmap = displayio.OnDiskBitmap(file_path)
-
-    # Create a TileGrid to hold the bitmap
-    tile_grid = displayio.TileGrid(bitmap, pixel_shader=bitmap.pixel_shader)
-
-    # Create a Group to hold the TileGrid
-    group = displayio.Group()
-
-    # Add the TileGrid to the Group
-    group.append(tile_grid)
-    return group
-
-
-layer_image_paths = [
-    "img/p1_menu_buttons.bmp",
-    "img/p2_menu_buttons.bmp",
-    "img/p1_game_buttons.bmp",
-    "img/p2_game_buttons.bmp",
-    "img/Fn.bmp",
-]
-layer_bitmap_groups = [
-    create_bitmap_group(p) for p in layer_image_paths
-]
 
 
 class ItgWheelKeyboard:
@@ -67,26 +75,19 @@ class ItgWheelKeyboard:
         layout_class: type[KeyboardLayoutBase] = KeyboardLayoutUS,
         keycode_class: type[Keycode] = Keycode,
     ) -> None:
-        self.i2c = busio.I2C(board.GP3, board.GP2)
-        self.display_bus = i2cdisplaybus.I2CDisplayBus(self.i2c, device_address=0x3C)
-        self.display = adafruit_displayio_ssd1306.SSD1306(
-            self.display_bus, width=128, height=64
-        )
-        if not isinstance(self.display, type(None)):
-            self.display.bus.send(_DISPLAY_WAKE_COMMAND, b"")
-        self._display_sleep = False
 
-        self.keys = keypad.Keys(
-            pins=(
-                # fmt: off
-                board.GP7,  board.GP5,  board.GP4,
-                board.GP22, board.GP21, board.GP9,
-                board.GP17, board.GP10, board.GP12,
-                board.GP16, board.GP14, board.GP15,
-                # fmt: on
+        self.keys = keypad.KeyMatrix(
+            row_pins=(
+                board.P0_17,
+                board.P0_20,
+                board.P0_22,
+                board.P0_24,
             ),
-            value_when_pressed=False,
-            pull=True,
+            column_pins=(
+                board.P0_08,
+                board.P0_10,
+                board.P0_09,
+            ),
         )
         self._encoder = rotaryio.IncrementalEncoder(ROTA, ROTB)
         self._encoder_switch = digitalio.DigitalInOut(BUTTON)
@@ -109,7 +110,10 @@ class ItgWheelKeyboard:
     @property
     def keyboard(self) -> Keyboard:
         if self._keyboard is None:
-            self._keyboard = Keyboard(usb_hid.devices)
+            if BLE_ENABLED:
+                self._keyboard = ble_keyboard
+            else:
+                self._keyboard = Keyboard(usb_hid.devices)
         return self._keyboard
 
     @property
@@ -158,6 +162,7 @@ class ItgWheelKeyboard:
                 self.handle_encoder(delta)
             last_position = position
             if self.keys.events.get_into(event):
+                print("key event", event)
                 # keycode = self.layers[self.layer_index][event.key_number]
                 keycode = self.get_keycode(event.key_number)
                 if keycode is None or keycode is KC_NO:
@@ -175,10 +180,10 @@ class ItgWheelKeyboard:
 
             if self.layer_index != initial_layer_index:
                 self.on_layer_changed()
+            sleep(0.02)
 
     def on_layer_changed(self):
-        if self.layer_index < len(layer_bitmap_groups):
-            self.display.root_group = layer_bitmap_groups[self.layer_index]
+        pass
 
     def get_keycode(self, key_number: int, layers: list = None):
         if layers is None:
@@ -232,6 +237,28 @@ class ItgWheelKeyboard:
 
             microcontroller.on_next_reset(microcontroller.RunMode.UF2)
             microcontroller.reset()
+
+
+def layout(
+    # fmt: off
+          up,
+    left, middle, right,
+          down,
+    F00, F01,
+    F10, F11,
+    F20, F21,
+    F30, F31,
+    # fmt: on
+) -> tuple:
+    return (
+        # fmt: off
+        up,    F00, F01,
+        right, F10, F11,
+        down,  F20, F21,
+        left,  F30, F31,
+        # fmt: on
+        middle,
+    )
 
 
 kb = ItgWheelKeyboard()
@@ -305,55 +332,71 @@ kb.encoder_layers = (
 )
 
 # fmt: off
-empty_layer = (KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT)
+empty_layer = (KC_TRANSPARENT)*13
+# empty_layer = (KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT, KC_TRANSPARENT)
 # fmt: on
 kb.layers = (
     # fmt: off
     # LAYER_P1
-    (
-        P1_SELECT   , P1_MENU_UP  , P1_START,
-        P1_MENU_LEFT, P1_MENU_DOWN, P1_MENU_RIGHT,
-        P1_OPEN_MENU, P1_CLOSE    , kb.DF(LAYER_P2),
-        P1_BACK     , kb.MO(LAYER_P1_GAME), kb.MO(LAYER_FN)
+    layout(
+                      P1_MENU_UP   ,
+        P1_MENU_LEFT, P1_START     , P1_MENU_RIGHT,
+                      P1_MENU_DOWN ,
+        P1_CLOSE       , P1_OPEN_MENU,
+        P1_SELECT      , kb.DF(LAYER_P2),
+        P1_BACK        , kb.MO(LAYER_P1_GAME),
+        kb.MO(LAYER_FN), XXXXXXX
     ),
     # LAYER_P2
-    (
-        P2_SELECT   , P2_MENU_UP  , P2_START,
-        P2_MENU_LEFT, P2_MENU_DOWN, P2_MENU_RIGHT,
-        P2_OPEN_MENU, P2_CLOSE    , kb.DF(LAYER_P1),
-        P2_BACK     , kb.MO(LAYER_P2_GAME), kb.MO(LAYER_FN)
+    layout(
+                      P2_MENU_UP   ,
+        P2_MENU_LEFT, P2_START     , P2_MENU_RIGHT,
+                      P2_MENU_DOWN ,
+        P2_CLOSE       , P2_OPEN_MENU,
+        P2_SELECT      , kb.DF(LAYER_P1),
+        P2_BACK        , kb.MO(LAYER_P2_GAME),
+        kb.MO(LAYER_FN), XXXXXXX
     ),
     # LAYER_P1_GAME
-    (
-        P1_SELECT   , P1_UP       , P1_START,
-        P1_LEFT     , P1_DOWN     , P1_RIGHT,
-        P1_OPEN_MENU, P1_CLOSE    , XXXXXXX,
-        P1_BACK     , _______     , XXXXXXX
+    layout(
+        *empty_layer
+        # P1_SELECT   , P1_UP       , P1_START,
+        # P1_LEFT     , P1_DOWN     , P1_RIGHT,
+        # P1_OPEN_MENU, P1_CLOSE    , XXXXXXX,
+        # P1_BACK     , _______     , XXXXXXX
     ),
     # LAYER_P2_GAME
-    (
-        P2_SELECT   , P2_UP       , P2_START,
-        P2_LEFT     , P2_DOWN     , P2_RIGHT,
-        P2_OPEN_MENU, P2_CLOSE    , XXXXXXX,
-        P2_BACK     , _______     , XXXXXXX
+    layout(
+        *empty_layer
+        # P2_SELECT   , P2_UP       , P2_START,
+        # P2_LEFT     , P2_DOWN     , P2_RIGHT,
+        # P2_OPEN_MENU, P2_CLOSE    , XXXXXXX,
+        # P2_BACK     , _______     , XXXXXXX
     ),
     # LAYER_FN
-    (
+    layout(
         IR_SOUNDBAR_TOGGLE_MUTE , IR_SOUNDBAR_VOL_UP   , IR_TV_POWER_ON_OFF,
         _______                 , IR_SOUNDBAR_VOL_DOWN , IR_SOUNDBAR_POWER_ON_OFF,
         QK_BOOT                 , OPERATOR             , IR_TV_HDMI3,
-        ALT_F4                  , _______              , _______
+        ALT_F4                  , _______              , _______,_______
     ),
     # LAYER_TEST
-    (
+    layout(
         Keycode.ONE,   Keycode.TWO,   Keycode.THREE,
         Keycode.FOUR,  Keycode.FIVE,  Keycode.SIX,
         Keycode.SEVEN, Keycode.EIGHT, Keycode.NINE,
-        Keycode.A,     Keycode.B,     kb.MO(LAYER_TEST),
+        Keycode.A,     Keycode.B,     Keycode.C,
+        kb.MO(LAYER_TEST),
     ),
     # fmt: on
 )
 
 
 def main():
+    import analogio
+
+    bat_volt = analogio.AnalogIn(board.BAT_VOLT)
+    print("battery value", bat_volt.value)
+    print("ref", bat_volt.reference_voltage)
+    print("battery:", (bat_volt.value * bat_volt.reference_voltage) / 65535)
     kb.main_loop()
