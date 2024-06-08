@@ -77,6 +77,12 @@ class ItgWheelKeyboard:
         self.layer_index = 0
         self.layer_index_stack = []
 
+    def _pick_by_active_player(self, p1_choice, p2_choice):
+        if self.player_switch.value:
+            return p1_choice
+        else:
+            return p2_choice
+
     def main_loop(self):
         event = keypad.Event()
         last_position = self.encoder.position
@@ -179,40 +185,50 @@ class ItgWheelKeyboard:
             microcontroller.reset()
 
     def OPEN_MENU(self, pressed: bool):
-        if self.player_switch.value:
-            keycodes = (
+        keycodes = self._pick_by_active_player(
+            (
                 ITG_KEYCODE_P1_MENU_LEFT,
                 ITG_KEYCODE_P1_LEFT,
                 ITG_KEYCODE_P1_MENU_RIGHT,
                 ITG_KEYCODE_P1_RIGHT,
-            )
-        else:
-            keycodes = (
+            ),
+            (
                 ITG_KEYCODE_P2_MENU_LEFT,
                 ITG_KEYCODE_P2_LEFT,
                 ITG_KEYCODE_P2_MENU_RIGHT,
                 ITG_KEYCODE_P2_RIGHT,
-            )
+            ),
+        )
         if pressed:
             self.keyboard.press(*keycodes)
         else:
             self.keyboard.release(*keycodes)
 
     def CLOSE_FOLDER(self, pressed: bool):
-        if self.player_switch.value:
-            keycodes = (
+        keycodes = self._pick_by_active_player(
+            (
                 ITG_KEYCODE_P1_UP,
                 ITG_KEYCODE_P1_DOWN,
-            )
-        else:
-            keycodes = (
+            ),
+            (
                 ITG_KEYCODE_P2_UP,
                 ITG_KEYCODE_P2_DOWN,
-            )
+            ),
+        )
         if pressed:
             self.keyboard.press(*keycodes)
         else:
             self.keyboard.release(*keycodes)
+
+    def FAVORITE(self, pressed: bool):
+        keycode = self._pick_by_active_player(
+            Keycode.I,
+            Keycode.O,
+        )
+        if pressed:
+            self.keyboard.press(keycode)
+        else:
+            self.keyboard.release(keycode)
 
     def BATT(self, pressed: bool):
         if pressed:
@@ -220,6 +236,7 @@ class ItgWheelKeyboard:
             ref = self.bat_volt.reference_voltage
             volt = (val * ref) / 65535
             self.keyboard_layout.write(f"{val=}\n{ref=}\n{volt=}\n")
+
 
 base_kb, poll = hid_provider.get_hid_keyboard()
 kb = ItgWheelKeyboard(base_kb, poll)
@@ -232,8 +249,13 @@ IR_TV_POWER_ON_OFF = KC_NO
 IR_SOUNDBAR_VOL_DOWN = KC_NO
 IR_SOUNDBAR_POWER_ON_OFF = KC_NO
 IR_TV_HDMI3 = KC_NO
+
 QK_BOOT = kb.BOOTLOADER
 ALT_F4 = kb.ALL(Keycode.ALT, Keycode.F4)
+CLOSE_FOLDER = kb.CLOSE_FOLDER
+OPEN_MENU = kb.OPEN_MENU
+FAVORITE = kb.FAVORITE
+PROFILE = Keycode.P
 
 
 LAYER_PLAYER = 0
@@ -249,9 +271,10 @@ kb.layers = (
               UP    ,
         LEFT, START , RIGHT,
               DOWN  ,
-        kb.CLOSE_FOLDER , kb.OPEN_MENU,
-        SELECT          , _______,
-        BACK            , _______,
+
+        CLOSE_FOLDER    , OPEN_MENU,
+        SELECT          , FAVORITE,
+        BACK            , PROFILE,
         kb.MO(LAYER_FN) , XXXXXXX
     ),
     # LAYER_FN
@@ -283,8 +306,9 @@ def main():
     try:
         kb.main_loop()
     except ConnectionError as e:
-        print('ConnectionError', e)
+        print("ConnectionError", e)
         import microcontroller, supervisor
+
         if supervisor.runtime.usb_connected:
             supervisor.reload()
         else:

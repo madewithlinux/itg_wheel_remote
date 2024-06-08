@@ -1,5 +1,5 @@
-# BLE_ENABLED = False
-BLE_ENABLED = True
+BLE_OVERRIDE = False
+# BLE_OVERRIDE = True
 
 # USE_BLE_UART = False
 USE_BLE_UART = True
@@ -40,13 +40,13 @@ def _nop():
 def get_hid_keyboard() -> (Keyboard, callable):
     """returns keyboard and function to poll in case of disconnects"""
 
-    if not BLE_ENABLED and supervisor.runtime.usb_connected:
+    if not BLE_OVERRIDE and supervisor.runtime.usb_connected:
         print("using USB HID keyboard")
         import usb_hid
 
 
         return (Keyboard(usb_hid.devices), _nop)
-    else:  # BLE_ENABLED
+    else:  # BLE_OVERRIDE
         import time
         import digitalio, board
         import adafruit_ble
