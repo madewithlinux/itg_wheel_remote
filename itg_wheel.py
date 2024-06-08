@@ -40,8 +40,9 @@ from adafruit_hid.keyboard_layout_us import KeyboardLayoutUS
 
 
 class ItgWheelKeyboard:
-    def __init__(self, keyboard: Keyboard) -> None:
+    def __init__(self, keyboard: Keyboard, poll: callable) -> None:
         self.keyboard = keyboard
+        self.poll = poll
         self.keyboard_layout = KeyboardLayoutUS(keyboard)
 
         self.keys = keypad.KeyMatrix(
@@ -107,6 +108,7 @@ class ItgWheelKeyboard:
                 keycode = self.get_keycode(keypad_layout.INDEX_ENCODER_MIDDLE)
                 self.handle_keycode(keycode, event.pressed)
 
+            self.poll()
             time.sleep(0.02)
 
     def get_keycode(self, key_number: int, layers: list = None):
@@ -219,8 +221,8 @@ class ItgWheelKeyboard:
             volt = (val * ref) / 65535
             self.keyboard_layout.write(f"{val=}\n{ref=}\n{volt=}\n")
 
-
-kb = ItgWheelKeyboard(hid_provider.get_hid_keyboard())
+base_kb, poll = hid_provider.get_hid_keyboard()
+kb = ItgWheelKeyboard(base_kb, poll)
 
 
 # TODO
@@ -278,4 +280,12 @@ kb.layers = (
 
 
 def main():
-    kb.main_loop()
+    try:
+        kb.main_loop()
+    except ConnectionError as e:
+        print('ConnectionError', e)
+        import microcontroller, supervisor
+        if supervisor.runtime.usb_connected:
+            supervisor.reload()
+        else:
+            microcontroller.reset()
