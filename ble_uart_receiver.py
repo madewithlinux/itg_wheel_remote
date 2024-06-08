@@ -14,8 +14,8 @@ kb = Keyboard(usb_hid.devices)
 ble = BLERadio()
 
 # reduce BLE uart latency
-UARTService._server_tx._timeout = 0.01
-UARTService._server_rx._timeout = 0.01
+UARTService._server_tx._timeout = 0.00
+UARTService._server_rx._timeout = 0.00
 
 uart_connection = None
 buf = bytearray(512)
@@ -66,11 +66,11 @@ while True:
                     if inst == "P":
                         keycode = int(line[1:])
                         kb.press(keycode)
-                        time.sleep(0.02)
+                        # time.sleep(0.02)
                     elif inst == "R":
                         keycode = int(line[1:])
                         kb.release(keycode)
-                        time.sleep(0.02)
+                        # time.sleep(0.02)
                 except:
                     print("failed to parse", repr(line))
                 board_led.value = not board_led.value

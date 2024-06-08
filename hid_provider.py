@@ -1,5 +1,5 @@
-BLE_OVERRIDE = False
-# BLE_OVERRIDE = True
+# BLE_OVERRIDE = False
+BLE_OVERRIDE = True
 
 # USE_BLE_UART = False
 USE_BLE_UART = True
@@ -14,8 +14,8 @@ device_name = "ITG wheel remote v2.0"
 manufacturer = "madewithlinux"
 
 
-UARTService._server_tx._timeout = 0.01
-UARTService._server_rx._timeout = 0.01
+UARTService._server_tx._timeout = 0.00
+UARTService._server_rx._timeout = 0.00
 
 class UartKeyboard:
     def __init__(self, ble: BLERadio, uart: UARTService):
@@ -63,6 +63,10 @@ def get_hid_keyboard() -> (Keyboard, callable):
         )
         ble = adafruit_ble.BLERadio()
         ble.name = device_name
+        print(f"{ble._adapter.address=}")
+        print(f"{ble.address_bytes=}")
+
+
 
         if USE_BLE_UART:
             print("using BLE UART keyboard")
@@ -112,10 +116,10 @@ def get_hid_keyboard() -> (Keyboard, callable):
             uart_ble_keyboard = UartKeyboard(ble, uart)
 
             block_until_connected()
-            # create bonds so that next pair will be faster
-            for connection in ble.connections:
-                connection.pair(bond=True)
-                print("bonded with", connection)
+            # # create bonds so that next pair will be faster
+            # for connection in ble.connections:
+            #     connection.pair(bond=True)
+            #     print("bonded with", connection)
             return (uart_ble_keyboard, block_until_connected)
 
         if not USE_BLE_UART:
@@ -124,8 +128,8 @@ def get_hid_keyboard() -> (Keyboard, callable):
             # kl = KeyboardLayoutUS(k)
 
             block_until_connected()
-            # # create bonds so that next pair will be faster
-            # for connection in ble.connections:
-            #     connection.pair(bond=True)
-            #     print("bonded with", connection)
+            # create bonds so that next pair will be faster
+            for connection in ble.connections:
+                connection.pair(bond=True)
+                print("bonded with", connection)
             return (ble_hid_keyboard, block_until_connected)

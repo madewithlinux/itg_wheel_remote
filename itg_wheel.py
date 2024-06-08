@@ -58,10 +58,11 @@ class ItgWheelKeyboard:
                 board.P0_09,
             ),
         )
-        self.encoder = rotaryio.IncrementalEncoder(board.P1_06, board.P1_04)
+        self.encoder = rotaryio.IncrementalEncoder(board.P1_06, board.P1_04, divisor=2)
         self.encoder_key = keypad.Keys(
             (board.P1_00,), value_when_pressed=False, pull=True
         )
+
 
         self.player_switch = digitalio.DigitalInOut(board.P0_11)
         """NOTE: for player_switch.value, P1 is True, P2 is False"""
@@ -99,8 +100,11 @@ class ItgWheelKeyboard:
                 # TODO: should we preserve missed steps?
                 # for i in range(abs(delta)):
                 #     self.handle_keycode(keycode, True)
+                #     time.sleep(0.01)
                 #     self.handle_keycode(keycode, False)
+                #     time.sleep(0.01)
                 self.handle_keycode(keycode, True)
+                time.sleep(0.01)
                 self.handle_keycode(keycode, False)
                 last_position = position
 
@@ -188,15 +192,15 @@ class ItgWheelKeyboard:
         keycodes = self._pick_by_active_player(
             (
                 ITG_KEYCODE_P1_MENU_LEFT,
-                ITG_KEYCODE_P1_LEFT,
+                # ITG_KEYCODE_P1_LEFT,
                 ITG_KEYCODE_P1_MENU_RIGHT,
-                ITG_KEYCODE_P1_RIGHT,
+                # ITG_KEYCODE_P1_RIGHT,
             ),
             (
                 ITG_KEYCODE_P2_MENU_LEFT,
-                ITG_KEYCODE_P2_LEFT,
+                # ITG_KEYCODE_P2_LEFT,
                 ITG_KEYCODE_P2_MENU_RIGHT,
-                ITG_KEYCODE_P2_RIGHT,
+                # ITG_KEYCODE_P2_RIGHT,
             ),
         )
         if pressed:
