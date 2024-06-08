@@ -288,10 +288,10 @@ kb.layers = (
         _______, IR_SOUNDBAR_TOGGLE_MUTE, _______,
                  _______,
 
-        QK_BOOT, IR_SOUNDBAR_POWER_ON_OFF,
+        QK_BOOT, ALT_F4  ,
         kb.BATT, OPERATOR,
         _______, _______ ,
-        _______, ALT_F4  ,
+        _______, _______ ,
     ),
     # LAYER_TEST
     layout(
