@@ -4,7 +4,15 @@ BLE_OVERRIDE = True
 # USE_BLE_UART = False
 USE_BLE_UART = True
 
+try:
+    from typing import Iterator, NoReturn, Optional, Tuple, Type, TYPE_CHECKING, Union
+    from typing_extensions import Literal
+except ImportError:
+    pass
 
+from ble_key_proxy_service import KeyProxyService
+
+import _bleio
 import supervisor
 from adafruit_hid.keyboard import Keyboard
 from adafruit_ble.services.nordic import UARTService
@@ -19,19 +27,29 @@ UARTService._server_rx._timeout = 0.00
 
 
 class UartKeyboard:
-    def __init__(self, ble: BLERadio, uart: UARTService):
+    def __init__(
+        self,
+        ble: BLERadio,
+        uart: UARTService,
+        key_proxy_service: KeyProxyService = None,
+    ):
         self.ble = ble
         self.uart = uart
+        self.key_proxy_service = key_proxy_service
 
     def press(self, *keycodes: int) -> None:
         if not self.uart or not self.ble.connected:
             return
+        if self.key_proxy_service:
+            self.key_proxy_service.press(*keycodes)
         for kc in keycodes:
             self.uart.write(f"P{kc}\n".encode("utf-8"))
 
     def release(self, *keycodes: int) -> None:
         if not self.uart or not self.ble.connected:
             return
+        if self.key_proxy_service:
+            self.key_proxy_service.release(*keycodes)
         for kc in keycodes:
             self.uart.write(f"R{kc}\n".encode("utf-8"))
 
@@ -40,7 +58,7 @@ def _nop():
     pass
 
 
-def get_hid_keyboard() -> (Keyboard, callable):
+def get_hid_keyboard() -> Tuple[Keyboard, callable]:
     """returns keyboard and function to poll in case of disconnects"""
 
     if not BLE_OVERRIDE and supervisor.runtime.usb_connected:
@@ -89,10 +107,10 @@ def get_hid_keyboard() -> (Keyboard, callable):
             scan_response = Advertisement()
             scan_response.complete_name = device_name
 
-        # assume that any existing connections are stale, and disconnect from them
-        for con in ble.connections:
-            print("disconnecting from", con)
-            con.disconnect()
+        # # assume that any existing connections are stale, and disconnect from them
+        # for con in ble.connections:
+        #     print("disconnecting from", con)
+        #     con.disconnect()
         print("advertising")
         ble.stop_advertising()
         ble.start_advertising(advertisement, scan_response)
@@ -126,13 +144,26 @@ def get_hid_keyboard() -> (Keyboard, callable):
             ble.stop_advertising()
 
         if USE_BLE_UART:
-            uart_ble_keyboard = UartKeyboard(ble, uart)
-
             block_until_connected()
             # create bonds so that next pair will be faster
-            for connection in ble.connections:
-                connection.pair(bond=True)
-                print("bonded with", connection)
+            for con in ble.connections:
+                con.pair(bond=True)
+                print("bonded with", con)
+
+            key_proxy_service = None
+            for con in ble.connections:
+                try:
+                    if KeyProxyService in con:
+                        key_proxy_service = con[KeyProxyService]
+                        print(f"{con} has {key_proxy_service}")
+                        break
+                except _bleio.BluetoothError as e:
+                    print("failed to check for key proxy service on", con, e)
+                    continue
+            uart_ble_keyboard = UartKeyboard(
+                ble, uart, key_proxy_service=key_proxy_service
+            )
+
             return (uart_ble_keyboard, block_until_connected)
 
         if not USE_BLE_UART:
@@ -142,7 +173,7 @@ def get_hid_keyboard() -> (Keyboard, callable):
 
             block_until_connected()
             # create bonds so that next pair will be faster
-            for connection in ble.connections:
-                connection.pair(bond=True)
-                print("bonded with", connection)
+            for con in ble.connections:
+                con.pair(bond=True)
+                print("bonded with", con)
             return (ble_hid_keyboard, block_until_connected)

@@ -1,3 +1,9 @@
+try:
+    from typing import Iterator, NoReturn, Optional, Tuple, Type, TYPE_CHECKING, Union
+    from typing_extensions import Literal
+except ImportError:
+    pass
+
 import hid_provider
 from game_button_mapping import (
     ITG_KEYCODE_P1_MENU_LEFT,
@@ -33,10 +39,14 @@ from keypad_layout import layout
 
 import time
 import board, keypad, rotaryio, digitalio, analogio
+import microcontroller, supervisor
 
 from adafruit_hid.keycode import Keycode
 from adafruit_hid.keyboard import Keyboard
 from adafruit_hid.keyboard_layout_us import KeyboardLayoutUS
+
+
+supervisor.runtime.autoreload = False
 
 
 class ItgWheelKeyboard:
@@ -310,7 +320,6 @@ def main():
         kb.main_loop()
     except ConnectionError as e:
         print("ConnectionError", e)
-        import microcontroller, supervisor
 
         time.sleep(1.0)
         if supervisor.runtime.usb_connected:

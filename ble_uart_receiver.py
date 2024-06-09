@@ -1,8 +1,10 @@
 import time
 import digitalio, board, usb_hid, microcontroller, supervisor
 
-import adafruit_ble
+from ble_key_proxy_service import KeyProxyService
+
 from adafruit_hid.keyboard import Keyboard
+import adafruit_ble
 from adafruit_ble import BLERadio
 from adafruit_ble.advertising import Advertisement
 from adafruit_ble.advertising.standard import ProvideServicesAdvertisement
@@ -10,13 +12,19 @@ from adafruit_ble.services.nordic import UARTService
 from adafruit_ble.services.standard.device_info import DeviceInfoService
 import _bleio
 
+
+supervisor.runtime.autoreload = False
+
 remote_address = _bleio.Address(
     b"\x9d\x0f\x94\x9c\x1a\xf7", _bleio.Address.RANDOM_STATIC
 )
 
-
 kb = Keyboard(usb_hid.devices)
+
 ble = BLERadio()
+key_proxy_service = KeyProxyService()
+# key_proxy_service.key_press.read_perm
+
 
 # reduce BLE uart latency
 UARTService._server_tx._timeout = 0.00
@@ -87,27 +95,40 @@ def inner_main():
         if uart_connection and uart_connection.connected:
             uart_service = uart_connection[UARTService]
             while uart_connection.connected:
-                msg_bytes = uart_service.read(16)
+
                 poll_for_reset()
-                if not msg_bytes:
-                    continue
-                # print(repr(msg))
-                msg = msg_bytes.decode("utf-8").rstrip("\n")
-                # print(repr(msg))
-                for line in msg.split("\n"):
-                    try:
-                        inst = line[0]
-                        if inst == "P":
-                            keycode = int(line[1:])
-                            kb.press(keycode)
-                            # time.sleep(0.02)
-                        elif inst == "R":
-                            keycode = int(line[1:])
-                            kb.release(keycode)
-                            # time.sleep(0.02)
-                    except:
-                        print("failed to parse", repr(line))
+
+                # msg_bytes = uart_service.read(16)
+                # if msg_bytes:
+                #     # print(repr(msg))
+                #     msg = msg_bytes.decode("utf-8").rstrip("\n")
+                #     # print(repr(msg))
+                #     for line in msg.split("\n"):
+                #         try:
+                #             inst = line[0]
+                #             if inst == "P":
+                #                 keycode = int(line[1:])
+                #                 kb.press(keycode)
+                #                 # time.sleep(0.02)
+                #             elif inst == "R":
+                #                 keycode = int(line[1:])
+                #                 kb.release(keycode)
+                #                 # time.sleep(0.02)
+                #         except:
+                #             print("failed to parse", repr(line))
+                #         board_led.value = not board_led.value
+
+                key_to_press = key_proxy_service.get_press()
+                if key_to_press:
+                    print(f"{repr(key_to_press)=}")
+                    kb.press(key_to_press)
                     board_led.value = not board_led.value
+                key_to_release = key_proxy_service.get_release()
+                if key_to_release:
+                    print(f"{repr(key_to_release)=}")
+                    kb.release(key_to_release)
+                    board_led.value = not board_led.value
+
             kb.release_all()
 
 

@@ -11,10 +11,10 @@ sync:
 	cp -urt ${TARGET_DEVICE}/ lib/
 	# mkdir -p ${TARGET_DEVICE}/img
 	# cp -urt ${TARGET_DEVICE}/img img/*.bmp
-	cp -urt ${TARGET_RECEIVER_DEVICE}/ ble_uart_receiver.py
+	cp -urt ${TARGET_RECEIVER_DEVICE}/ ble_uart_receiver.py ble_key_proxy_service.py
 
 sync-loop:
-	set -eu; while true; do just sync; sleep 1s; done
+	set -eu; while true; do just sync; sleep 2s; done
 
 console:
 	picocom ${SERIAL_TTY}
