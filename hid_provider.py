@@ -17,6 +17,7 @@ manufacturer = "madewithlinux"
 UARTService._server_tx._timeout = 0.00
 UARTService._server_rx._timeout = 0.00
 
+
 class UartKeyboard:
     def __init__(self, ble: BLERadio, uart: UARTService):
         self.ble = ble
@@ -34,8 +35,10 @@ class UartKeyboard:
         for kc in keycodes:
             self.uart.write(f"R{kc}\n".encode("utf-8"))
 
+
 def _nop():
     pass
+
 
 def get_hid_keyboard() -> (Keyboard, callable):
     """returns keyboard and function to poll in case of disconnects"""
@@ -43,7 +46,6 @@ def get_hid_keyboard() -> (Keyboard, callable):
     if not BLE_OVERRIDE and supervisor.runtime.usb_connected:
         print("using USB HID keyboard")
         import usb_hid
-
 
         return (Keyboard(usb_hid.devices), _nop)
     else:  # BLE_OVERRIDE
@@ -71,8 +73,6 @@ def get_hid_keyboard() -> (Keyboard, callable):
         # print(f"{repr(ble._adapter.address.RANDOM_PRIVATE_RESOLVABLE)=}")
         print(f"{ble.address_bytes=}")
 
-
-
         if USE_BLE_UART:
             print("using BLE UART keyboard")
             uart = UARTService()
@@ -89,13 +89,21 @@ def get_hid_keyboard() -> (Keyboard, callable):
             scan_response = Advertisement()
             scan_response.complete_name = device_name
 
-        if not ble.connected:
-            print("advertising")
-            ble.stop_advertising()
-            ble.start_advertising(advertisement, scan_response)
-        else:
-            print("already connected")
-            print(ble.connections)
+        # assume that any existing connections are stale, and disconnect from them
+        for con in ble.connections:
+            print("disconnecting from", con)
+            con.disconnect()
+        print("advertising")
+        ble.stop_advertising()
+        ble.start_advertising(advertisement, scan_response)
+
+        # if not ble.connected:
+        #     print("advertising")
+        #     ble.stop_advertising()
+        #     ble.start_advertising(advertisement, scan_response)
+        # else:
+        #     print("already connected")
+        #     print(ble.connections)
 
         def block_until_connected():
             if ble.connected:
@@ -106,7 +114,7 @@ def get_hid_keyboard() -> (Keyboard, callable):
             # if not ble.advertising:
             #     print("advertising")
             #     ble.start_advertising(advertisement, scan_response)
-            print('waiting for BLE connection')
+            print("waiting for BLE connection")
             with digitalio.DigitalInOut(board.LED) as board_led:
                 board_led.direction = digitalio.Direction.OUTPUT
                 while not ble.connected:
@@ -114,9 +122,8 @@ def get_hid_keyboard() -> (Keyboard, callable):
                     time.sleep(0.1)
                     board_led.value = False
                     time.sleep(0.1)
-            print('connected')
+            print("connected")
             ble.stop_advertising()
-
 
         if USE_BLE_UART:
             uart_ble_keyboard = UartKeyboard(ble, uart)

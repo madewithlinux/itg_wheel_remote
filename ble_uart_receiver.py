@@ -49,7 +49,7 @@ def inner_main():
             board_led.value = True
             print(f"connecting to {remote_address}")
             try:
-                uart_connection = ble.connect(remote_address, timeout=2)
+                uart_connection = ble.connect(remote_address)
                 uart_connection.pair(bond=True)
                 print("connected!")
             except _bleio.BluetoothError as e:
