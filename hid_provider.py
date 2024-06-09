@@ -64,6 +64,11 @@ def get_hid_keyboard() -> (Keyboard, callable):
         ble = adafruit_ble.BLERadio()
         ble.name = device_name
         print(f"{ble._adapter.address=}")
+        print(f"{repr(ble._adapter.address.address_bytes)=}")
+        print(f"{repr(ble._adapter.address.type)=}")
+        # print(f"{repr(ble._adapter.address.PUBLIC)=}")
+        print(f"{repr(ble._adapter.address.RANDOM_STATIC)=}")
+        # print(f"{repr(ble._adapter.address.RANDOM_PRIVATE_RESOLVABLE)=}")
         print(f"{ble.address_bytes=}")
 
 
@@ -86,6 +91,7 @@ def get_hid_keyboard() -> (Keyboard, callable):
 
         if not ble.connected:
             print("advertising")
+            ble.stop_advertising()
             ble.start_advertising(advertisement, scan_response)
         else:
             print("already connected")
@@ -109,17 +115,17 @@ def get_hid_keyboard() -> (Keyboard, callable):
                     board_led.value = False
                     time.sleep(0.1)
             print('connected')
-            # ble.stop_advertising()
+            ble.stop_advertising()
 
 
         if USE_BLE_UART:
             uart_ble_keyboard = UartKeyboard(ble, uart)
 
             block_until_connected()
-            # # create bonds so that next pair will be faster
-            # for connection in ble.connections:
-            #     connection.pair(bond=True)
-            #     print("bonded with", connection)
+            # create bonds so that next pair will be faster
+            for connection in ble.connections:
+                connection.pair(bond=True)
+                print("bonded with", connection)
             return (uart_ble_keyboard, block_until_connected)
 
         if not USE_BLE_UART:

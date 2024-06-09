@@ -63,7 +63,6 @@ class ItgWheelKeyboard:
             (board.P1_00,), value_when_pressed=False, pull=True
         )
 
-
         self.player_switch = digitalio.DigitalInOut(board.P0_11)
         """NOTE: for player_switch.value, P1 is True, P2 is False"""
 
@@ -119,7 +118,7 @@ class ItgWheelKeyboard:
                 self.handle_keycode(keycode, event.pressed)
 
             self.poll()
-            time.sleep(0.02)
+            # time.sleep(0.005)
 
     def get_keycode(self, key_number: int, layers: list = None):
         if layers is None:
@@ -313,6 +312,7 @@ def main():
         print("ConnectionError", e)
         import microcontroller, supervisor
 
+        time.sleep(1.0)
         if supervisor.runtime.usb_connected:
             supervisor.reload()
         else:

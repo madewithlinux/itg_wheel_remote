@@ -7,7 +7,7 @@ usb_midi.disable()
 # ref https://learn.adafruit.com/welcome-to-circuitpython/renaming-circuitpy#renaming-circuitpy-through-circuitpython-3014813
 storage.remount("/", readonly=False)
 m = storage.getmount("/")
-# m.label = "ITG_WHEEL_RECEIVER"
+m.label = "RECEIVER"
 storage.remount("/", readonly=True)
 storage.enable_usb_drive()
 
